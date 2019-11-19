@@ -27,104 +27,63 @@ import hou
 import sgtk
 
 
-class TkGeometryNodeHandler(object):
-    """Handle Tk Geometry node operations and callbacks."""
+class TkFileNodeHandler(object):
+    """Handle Tk file node operations and callbacks."""
 
 
     ############################################################################
     # Class data
 
-    HOU_ROP_GEOMETRY_TYPE = "geometry"
-    """Houdini type for geometry rops."""
+    HOU_SOP_GEOMETRY_TYPE = "file"
+    """Houdini type for file sops."""
+    # this is correct. the houdini internal rop_file is a sop.
 
-    HOU_SOP_GEOMETRY_TYPE = "rop_geometry"
-    """Houdini type for geometry sops."""
-    # this is correct. the houdini internal rop_geometry is a sop.
-
-    NODE_OUTPUT_PATH_PARM = "sopoutput"
+    NODE_OUTPUT_PATH_PARM = "filepath"
     """The name of the output path parameter on the node."""
 
-    TK_GEOMETRY_NODE_TYPE = "sgtk_geometry"
-    """The class of node as defined in Houdini for the Geometry nodes."""
-
-    TK_OUTPUT_CONNECTIONS_KEY = "tk_output_connections"
-    """The key in the user data that stores the save output connections."""
-
-    TK_OUTPUT_CONNECTION_CODEC = "sgtk-01"
-    """The encode/decode scheme currently being used."""
-
-    TK_OUTPUT_CONNECTION_CODECS = {
-        "sgtk-01": {
-            'encode': lambda data: \
-                base64.b64encode(zlib.compress(pickle.dumps(data))),
-            'decode': lambda data_str: \
-                pickle.loads(zlib.decompress(base64.b64decode(data_str))),
-        },
-    }
-    """Encode/decode schemes. To support backward compatibility if changes."""
-    # codec names should not include a ":"
-
-    TK_OUTPUT_PROFILE_PARM = "output_profile"
-    """The name of the parameter that stores the current output profile."""
-
-    TK_OUTPUT_PROFILE_NAME_KEY = "tk_output_profile_name"
-    """The key in the user data that stores the output profile name."""
-
+    TK_FILE_NODE_TYPE = "sgtk_file"
+    """The class of node as defined in Houdini for the file nodes."""
 
     ############################################################################
     # Class methods
 
     @classmethod
-    def convert_back_to_tk_geometry_nodes(cls, app):
-        """Convert Geometry nodes back to Toolkit Geometry nodes.
+    def convert_back_to_tk_file_nodes(cls, app):
+        """Convert file nodes back to Toolkit file nodes.
 
         :param app: The calling Toolkit Application
 
-        Note: only converts nodes that had previously been Toolkit Geometry
+        Note: only converts nodes that had previously been Toolkit file
         nodes.
 
         """
 
-        # get all rop/sop geometry nodes in the session
-        geometry_nodes = []
-        geometry_nodes.extend(hou.nodeType(hou.sopNodeTypeCategory(),
+        # get all sop file nodes in the session
+        file_nodes = []
+        file_nodes.extend(hou.nodeType(hou.sopNodeTypeCategory(),
             cls.HOU_SOP_GEOMETRY_TYPE).instances())
-        geometry_nodes.extend(hou.nodeType(hou.ropNodeTypeCategory(),
-            cls.HOU_ROP_GEOMETRY_TYPE).instances())
 
-        if not geometry_nodes:
-            app.log_debug("No Geometry Nodes found for conversion.")
+        if not file_nodes:
+            app.log_debug("No file Nodes found for conversion.")
             return
 
         # the tk node type we'll be converting to
-        tk_node_type = TkGeometryNodeHandler.TK_GEOMETRY_NODE_TYPE
+        tk_node_type = TkFileNodeHandler.TK_FILE_NODE_TYPE
 
-        # iterate over all the geometry nodes and attempt to convert them
-        for geometry_node in geometry_nodes:
+        # iterate over all the file nodes and attempt to convert them
+        for file_node in file_nodes:
 
             # get the user data dictionary stored on the node
-            user_dict = geometry_node.userDataDict()
+            user_dict = file_node.userDataDict()
 
-            # get the output_profile from the dictionary
-            tk_output_profile_name = user_dict.get(
-                cls.TK_OUTPUT_PROFILE_NAME_KEY)
+            # create a new, Toolkit file node:
+            tk_file_node = file_node.parent().createNode(tk_node_type)
 
-            if not tk_output_profile_name:
-                app.log_warning(
-                    "Geometry node '%s' does not have an output profile name. "
-                    "Can't convert to Tk Geometry node. Continuing." %
-                    (geometry_node.name(),)
-                )
-                continue
-
-            # create a new, Toolkit Geometry node:
-            tk_geometry_node = geometry_node.parent().createNode(tk_node_type)
-
-            # find the index of the stored name on the new tk geometry node
+            # find the index of the stored name on the new tk file node
             # and set that item in the menu.
             try:
-                output_profile_parm = tk_geometry_node.parm(
-                    TkGeometryNodeHandler.TK_OUTPUT_PROFILE_PARM)
+                output_profile_parm = tk_file_node.parm(
+                    TkFileNodeHandler.TK_OUTPUT_PROFILE_PARM)
                 output_profile_index = output_profile_parm.menuLabels().index(
                     tk_output_profile_name)
                 output_profile_parm.set(output_profile_index)
@@ -133,47 +92,45 @@ class TkGeometryNodeHandler(object):
                     (tk_output_profile_name,))
 
             # copy over all parameter values except the output path 
-            _copy_parm_values(geometry_node, tk_geometry_node,
+            _copy_parm_values(file_node, tk_file_node,
                 excludes=[cls.NODE_OUTPUT_PATH_PARM])
 
             # copy the inputs and move the outputs
-            _copy_inputs(geometry_node, tk_geometry_node)
+            _copy_inputs(file_node, tk_file_node)
 
             # determine the built-in operator type
-            if geometry_node.type().name() == cls.HOU_SOP_GEOMETRY_TYPE:
-                _restore_outputs_from_user_data(geometry_node, tk_geometry_node)
-            elif geometry_node.type().name() == cls.HOU_ROP_GEOMETRY_TYPE:
-                _move_outputs(geometry_node, tk_geometry_node)
+            if file_node.type().name() == cls.HOU_SOP_GEOMETRY_TYPE:
+                _restore_outputs_from_user_data(file_node, tk_file_node)
 
             # make the new node the same color. the profile will set a color, 
             # but do this just in case the user changed the color manually
             # prior to the conversion.
-            tk_geometry_node.setColor(geometry_node.color())
+            tk_file_node.setColor(file_node.color())
 
-            # remember the name and position of the original geometry node
-            geometry_node_name = geometry_node.name()
-            geometry_node_pos = geometry_node.position()
+            # remember the name and position of the original file node
+            file_node_name = file_node.name()
+            file_node_pos = file_node.position()
 
-            # destroy the original geometry node
-            geometry_node.destroy()
+            # destroy the original file node
+            file_node.destroy()
 
-            # name and reposition the new, regular geometry node to match the
+            # name and reposition the new, regular file node to match the
             # original
-            tk_geometry_node.setName(geometry_node_name)
-            tk_geometry_node.setPosition(geometry_node_pos)
+            tk_file_node.setName(file_node_name)
+            tk_file_node.setPosition(file_node_pos)
 
-            app.log_debug("Converted: Geometry node '%s' to TK Geometry node."
-                % (geometry_node_name,))
+            app.log_debug("Converted: file node '%s' to TK file node."
+                % (file_node_name,))
 
     @classmethod
-    def convert_to_regular_geometry_nodes(cls, app):
-        """Convert Toolkit Geometry nodes to regular Geometry nodes.
+    def convert_to_regular_file_nodes(cls, app):
+        """Convert Toolkit file nodes to regular file nodes.
 
         :param app: The calling Toolkit Application
 
         """
 
-        tk_node_type = TkGeometryNodeHandler.TK_GEOMETRY_NODE_TYPE
+        tk_node_type = TkFileNodeHandler.TK_FILE_NODE_TYPE
 
         # determine the surface operator type for this class of node
         sop_types = hou.sopNodeTypeCategory().nodeTypes()
@@ -183,84 +140,78 @@ class TkGeometryNodeHandler(object):
         rop_types = hou.ropNodeTypeCategory().nodeTypes()
         rop_type = rop_types[tk_node_type]
 
-        # get all instances of tk geometry rop/sop nodes
-        tk_geometry_nodes = []
-        tk_geometry_nodes.extend(
+        # get all instances of tk file rop/sop nodes
+        tk_file_nodes = []
+        tk_file_nodes.extend(
             hou.nodeType(hou.sopNodeTypeCategory(), tk_node_type).instances())
-        tk_geometry_nodes.extend(
+        tk_file_nodes.extend(
             hou.nodeType(hou.ropNodeTypeCategory(), tk_node_type).instances())
 
-        if not tk_geometry_nodes:
-            app.log_debug("No Toolkit Geometry Nodes found for conversion.")
+        if not tk_file_nodes:
+            app.log_debug("No Toolkit file Nodes found for conversion.")
             return
 
-        # iterate over all the tk geometry nodes and attempt to convert them
-        for tk_geometry_node in tk_geometry_nodes:
+        # iterate over all the tk file nodes and attempt to convert them
+        for tk_file_node in tk_file_nodes:
 
             # determine the corresponding, built-in operator type
-            if tk_geometry_node.type() == sop_type:
-                geometry_operator = cls.HOU_SOP_GEOMETRY_TYPE
-            elif tk_geometry_node.type() == rop_type:
-                geometry_operator = cls.HOU_ROP_GEOMETRY_TYPE
+            if tk_file_node.type() == sop_type:
+                file_operator = cls.HOU_SOP_GEOMETRY_TYPE
             else:
                 app.log_warning("Unknown type for node '%s': %s'" %
-                    (tk_geometry_node.name(), tk_geometry_node.type()))
+                    (tk_file_node.name(), tk_file_node.type()))
                 continue
 
-            # create a new, regular Geometry node
-            geometry_node = tk_geometry_node.parent().createNode(geometry_operator)
+            # create a new, regular file node
+            file_node = tk_file_node.parent().createNode(file_operator)
 
             # copy the file parms value to the new node
             filename = _get_output_menu_label(
-                tk_geometry_node.parm(cls.NODE_OUTPUT_PATH_PARM))
-            geometry_node.parm(cls.NODE_OUTPUT_PATH_PARM).set(filename)
+                tk_file_node.parm(cls.NODE_OUTPUT_PATH_PARM))
+            file_node.parm(cls.NODE_OUTPUT_PATH_PARM).set(filename)
 
             # copy across knob values
-            _copy_parm_values(tk_geometry_node, geometry_node,
+            _copy_parm_values(tk_file_node, file_node,
                 excludes=[cls.NODE_OUTPUT_PATH_PARM])
 
-            # store the geometry output profile name in the user data so that we
+            # store the file output profile name in the user data so that we
             # can retrieve it later.
-            output_profile_parm = tk_geometry_node.parm(
+            output_profile_parm = tk_file_node.parm(
                 cls.TK_OUTPUT_PROFILE_PARM)
             tk_output_profile_name = \
                 output_profile_parm.menuLabels()[output_profile_parm.eval()]
-            geometry_node.setUserData(cls.TK_OUTPUT_PROFILE_NAME_KEY,
-                tk_output_profile_name)
 
             # copy the inputs and move the outputs
-            _copy_inputs(tk_geometry_node, geometry_node)
-            if geometry_operator == cls.HOU_SOP_GEOMETRY_TYPE:
-                _save_outputs_to_user_data(tk_geometry_node, geometry_node)
-            elif geometry_operator == cls.HOU_ROP_GEOMETRY_TYPE:
-                _move_outputs(tk_geometry_node, geometry_node)
+            _copy_inputs(tk_file_node, file_node)
+            if file_operator == cls.HOU_SOP_GEOMETRY_TYPE:
+                _save_outputs_to_user_data(tk_file_node, file_node)
 
             # make the new node the same color
-            geometry_node.setColor(tk_geometry_node.color())
+            file_node.setColor(tk_file_node.color())
 
-            # remember the name and position of the original tk geometry node
-            tk_geometry_node_name = tk_geometry_node.name()
-            tk_geometry_node_pos = tk_geometry_node.position()
+            # remember the name and position of the original tk file node
+            tk_file_node_name = tk_file_node.name()
+            tk_file_node_pos = tk_file_node.position()
 
-            # destroy the original tk geometry node
-            tk_geometry_node.destroy()
+            # destroy the original tk file node
+            tk_file_node.destroy()
 
-            # name and reposition the new, regular geometry node to match the
+            # name and reposition the new, regular file node to match the
             # original
-            geometry_node.setName(tk_geometry_node_name)
-            geometry_node.setPosition(tk_geometry_node_pos)
+            file_node.setName(tk_file_node_name)
+            file_node.setPosition(tk_file_node_pos)
 
-            app.log_debug("Converted: Tk Geometry node '%s' to Geometry node."
-                % (tk_geometry_node_name,))
+            app.log_debug("Converted: Tk file node '%s' to file node."
+                % (tk_file_node_name,))
 
     @classmethod
-    def get_all_tk_geometry_nodes(cls):
+    def get_all_tk_file_nodes(cls):
         """
-        Returns a list of all tk-houdini-geometrynode instances in the current
+        Returns a list of all tk-houdini-filenode instances in the current
         session.
         """
 
-        tk_node_type = TkGeometryNodeHandler.TK_GEOMETRY_NODE_TYPE
+        tk_node_type = TkFileNodeHandler.TK_FILE_NODE_TYPE
 
         return hou.nodeType(hou.ropNodeTypeCategory(), tk_node_type).instances()
 
@@ -271,7 +222,7 @@ class TkGeometryNodeHandler(object):
         """
 
         output_parm = node.parm(cls.NODE_OUTPUT_PATH_PARM)
-        path = hou.expandString(output_parm.menuLabels()[output_parm.eval()])
+        path = hou.expandString(output_parm.evalAsString())
         return path
 
     ############################################################################
@@ -288,31 +239,13 @@ class TkGeometryNodeHandler(object):
         # logging methods, tank, context, etc.
         self._app = app
 
-        # get and cache the list of profiles defined in the settings
-        self._output_profiles = {}
-        for output_profile in self._app.get_setting("output_profiles", []):
-            output_profile_name = output_profile["name"]
-
-            if output_profile_name in self._output_profiles:
-                self._app.log_warning(
-                    "Found multiple output profiles named '%s' for the "
-                    "Tk Geometry node! Only the first one will be available." %
-                    (output_profile_name,)
-                )
-                continue
-
-            self._output_profiles[output_profile_name] = output_profile
-            self._app.log_debug("Caching geometry output profile: '%s'" %
-                (output_profile_name,))
-
-
     ############################################################################
     # methods and callbacks executed via the OTLs
 
     # copy the render path for the current node to the clipboard
     def copy_path_to_clipboard(self):
 
-        render_path = self._get_render_path(hou.pwd())
+        render_path = self._compute_output_path(hou.pwd())
 
         # use Qt to copy the path to the clipboard:
         from sgtk.platform.qt import QtGui
@@ -321,84 +254,13 @@ class TkGeometryNodeHandler(object):
         self._app.log_debug(
             "Copied render path to clipboard: %s" % (render_path,))
 
-
-    # create an Geometry node, set the path to the output path of current node
-    def create_geometry_node(self):
-
-        current_node = hou.pwd()
-        output_path_parm = current_node.parm(self.NODE_OUTPUT_PATH_PARM)
-        geometry_node_name = 'geometry_' + current_node.name()
-
-        # create the geometry node and set the filename parm
-        geometry_node = current_node.parent().createNode(
-            self.HOU_SOP_GEOMETRY_TYPE)
-        geometry_node.parm(self.NODE_OUTPUT_PATH_PARM).set(
-            output_path_parm.menuLabels()[output_path_parm.eval()])
-        geometry_node.setName(geometry_node_name, unique_name=True)
-
-        # move it away from the origin
-        geometry_node.moveToGoodPosition()
-
-
-    # get labels for all tk-houdini-geometry node output profiles
-    def get_output_profile_menu_labels(self):
-
-        menu_labels = []
-        for count, output_profile_name in enumerate(self._output_profiles):
-            menu_labels.extend([count, output_profile_name])
-
-        return menu_labels
-
-
-    # returns a list of menu items for the current node
-    def get_output_path_menu_items(self):
-
-        menu = ["sgtk"]
-        current_node = hou.pwd()
-
-        # attempt to compute the output path and add it as an item in the menu
-        try:
-            path = self._compute_output_path(current_node)
-            menu = [path, path]
-        except sgtk.TankError as e:
-            error_msg = ("Unable to construct the output path menu items: " 
-                         "%s - %s" % (current_node.name(), e))
-            self._app.log_error(error_msg)
-            menu.append("ERROR: %s" % (error_msg,))
-
-        return menu
-
-
-    # apply the selected profile in the session
-    def set_profile(self, node=None):
-
-        if not node:
-            node = hou.pwd()
-
-        output_profile = self._get_output_profile(node)
-
-        self._app.log_debug("Applying tk geometry node profile: %s" %
-            (output_profile["name"],))
-
-        # apply the supplied settings to the node
-        settings = output_profile["settings"]
-        if settings:
-            self._app.log_debug('Populating format settings: %s' % 
-                (settings,))
-            node.setParms(settings)
-
-        # set the node color
-        color = output_profile["color"]
-        if color:
-            node.setColor(hou.Color(color))
-
-        self.refresh_output_path(node)
-
     # refresh the output profile path
-    def refresh_output_path(self, node):
+    def refresh_path(self, node):
 
-        output_path_parm = node.parm(self.NODE_OUTPUT_PATH_PARM)
-        output_path_parm.set(output_path_parm.eval())
+        path = self._compute_output_path(node)
+        self._check_alembic(node)
+
+        return path
 
     # open a file browser showing the render path of the current node
     def show_in_fs(self):
@@ -411,7 +273,7 @@ class TkGeometryNodeHandler(object):
         render_dir = None
 
         # first, try to just use the current cached path:
-        render_path = self._get_render_path(current_node)
+        render_path = self._compute_output_path(current_node)
 
         if render_path:
             # the above method returns houdini style slashes, so ensure these
@@ -421,20 +283,6 @@ class TkGeometryNodeHandler(object):
             dir_name = os.path.dirname(render_path)
             if os.path.exists(dir_name):
                 render_dir = dir_name
-
-        if not render_dir:
-            # render directory doesn't exist so try using location
-            # of rendered frames instead:
-            rendered_files = self._get_rendered_files(current_node)
-
-            if not rendered_files:
-                msg = ("Unable to find rendered files for node '%s'." 
-                       % (current_node,))
-                self._app.log_error(msg)
-                hou.ui.displayMessage(msg)
-                return
-            else:
-                render_dir = os.path.dirname(rendered_files[0])
 
         # if we have a valid render path then show it:
         if render_dir:
@@ -467,215 +315,48 @@ class TkGeometryNodeHandler(object):
 
         node.setName(default_name, unique_name=True)
 
-        # apply the default profile
-        self.set_profile(node)
-
         try:
             self._app.log_metric("Create", log_version=True)
         except:
             # ingore any errors. ex: metrics logging not supported
             pass
 
-    # write backup file
-    def create_backup_file(self, node):
-
-        backup_path = self._compute_backup_output_path(node)
-
-        # Create dir if it doesn't exist
-        backup_dir_path = os.path.dirname(backup_path)
-        if not os.path.exists(backup_dir_path):
-            os.makedirs(backup_dir_path)
-
-        # write backup hip
-        hou.hipFile.save(file_name=None, save_to_recent_files=True)
-
-        shutil.copy2(hou.hipFile.path(), backup_path)
-        self._app.log_debug("Created backup file for %s" % node.name())
-
-    def get_backup_file(self, node):
-        
-        backup_path = self._compute_backup_output_path(node)
-
-        # check if backup file exists
-        if os.path.exists(backup_path):
-            return backup_path
-        else:
-            self._app.log_warning("Could not find backup hip file for %s" % node.path())
-
-    def auto_version(self, node):
-
-        # get relevant fields from the current file path
-        work_file_fields = self._get_hipfile_fields()
-
-        output_profile = self._get_output_profile(node)
-        output_cache_template = self._app.get_template_by_name(
-            output_profile["output_cache_template"])
-
-        # Get the type of output
-        type_parm = node.parm('types')
-        extension = type_parm.menuLabels()[type_parm.evalAsInt()]
-
-        fields = {
-            "name": work_file_fields.get("name", None),
-            "node": node.name(),
-            "ext": extension,
-            "SEQ": "FORMAT: $F"
-        }
-
-        fields.update(self._app.context.as_template_fields(
-            output_cache_template))
-
-        max_version = 0
-        for caches in self._app.sgtk.abstract_paths_from_template(output_cache_template, fields):
-            fields = output_cache_template.get_fields(caches)
-            if fields['version'] > max_version:
-                max_version = fields['version']
-        
-        node.parm('ver').set(max_version + 1)
-
-
 
     ############################################################################
     # Private methods
 
-    # compute the output path based on the current work file and backup template
-    def _compute_backup_output_path(self, node):
-
-        # get relevant fields from the current file path
-        work_file_fields = self._get_hipfile_fields()
-
-        if not work_file_fields:
-            msg = "This Houdini file is not a Shotgun Toolkit work file!"
-            raise sgtk.TankError(msg)
-
-        # Get the type of output
-        type_parm = node.parm('types')
-        extension = type_parm.menuLabels()[type_parm.evalAsInt()]
-
-        # create fields dict with all the metadata
-        fields = {
-            "name": work_file_fields.get("name", None),
-            "node": node.name(),
-            "version": node.parm('ver').evalAsInt(),
-            "ext": extension,
-        }
-        
-        output_profile = self._get_output_profile(node)
-        output_cache_template = self._app.get_template_by_name(
-                        output_profile["output_backup_template"])
-
-        fields.update(self._app.context.as_template_fields(
-            output_cache_template))
-
-        path = output_cache_template.apply_fields(fields)
-        path = path.replace(os.path.sep, "/")
-
-        return path
-
     # compute the output path based on the current work file and cache template
     def _compute_output_path(self, node):
-
-
-        # get relevant fields from the current file path
-        work_file_fields = self._get_hipfile_fields()
-
-        if not work_file_fields:
-            msg = "This Houdini file is not a Shotgun Toolkit work file!"
-            raise sgtk.TankError(msg)
-
-        # Get the type of output
-        type_parm = node.parm('types')
-        extension = type_parm.menuLabels()[type_parm.evalAsInt()]
-
-        # create fields dict with all the metadata
-        fields = {
-            "name": work_file_fields.get("name", None),
-            "node": node.name(),
-            "version": node.parm('ver').evalAsInt(),
-            "ext": extension,
-            "SEQ": "FORMAT: $F"
-        }
-
-        # cache fields to accelerate path creation
-        cachedFields = node.cachedUserData('fields')
-        if cachedFields != fields:
-            node.setCachedUserData('fields', fields.copy())
+        mode = node.parm('mode').evalAsString()
+    
+        return_str = None
+        if mode == 'file':
+            return_str = node.parm('file').evalAsString()
+        elif mode == 'out':
+            rop_node_path = node.parm('rop').evalAsString()
+            
+            if rop_node_path:
+                rop_node = hou.node(rop_node_path)
+                
+                if rop_node and rop_node.type().name() == "sgtk_geometry":
+                    return_str = rop_node.parm("sopoutput").evalAsString()
+                else:
+                    return_str = 'Invalid Out node!'
+            else:
+                return_str = 'Missing Out path!'
         else:
-            return node.cachedUserData('pathCache')
-
-        output_profile = self._get_output_profile(node)
-        output_cache_template = self._app.get_template_by_name(
-                        output_profile["output_cache_template"])
-
-        fields.update(self._app.context.as_template_fields(
-            output_cache_template))
-
-        path = output_cache_template.apply_fields(fields)
-        path = path.replace(os.path.sep, "/")
-
-        node.setCachedUserData('pathCache', path)
-        return path
-
-
-    # get the current output profile
-    def _get_output_profile(self, node=None):
-
-        if not node:
-            node = hou.pwd()
-
-        output_profile_parm = node.parm(self.TK_OUTPUT_PROFILE_PARM)
-        output_profile_name = \
-            output_profile_parm.menuLabels()[output_profile_parm.eval()]
-        output_profile = self._output_profiles[output_profile_name]
-
-        return output_profile
+            return_str = 'Mode not recognized!'
             
+        node.parm('filepath').set(return_str)
+        return return_str
 
-    # extract fields from current Houdini file using the workfile template
-    def _get_hipfile_fields(self):
-        current_file_path = hou.hipFile.path()
-
-        work_fields = {}
-        work_file_template = self._app.get_template("work_file_template")
-        if (work_file_template and 
-            work_file_template.validate(current_file_path)):
-            work_fields = work_file_template.get_fields(current_file_path)
-
-        return work_fields
-
-
-    # get the render path from current item in the output path parm menu
-    def _get_render_path(self, node):
-        output_parm = node.parm(self.NODE_OUTPUT_PATH_PARM)
-        path = output_parm.menuLabels()[output_parm.eval()]
-        return path
-
-
-    # returns the files on disk associated with this node
-    def _get_rendered_files(self, node):
-
-        file_name = self._get_render_path(node)
-
-        output_profile = self._get_output_profile(node)
-
-        # get the output cache template for the current profile
-        output_cache_template = self._app.get_template_by_name(
-            output_profile["output_cache_template"])
-
-        if not output_cache_template.validate(file_name):
-            msg = ("Unable to validate files on disk for node %s."
-                   "The path '%s' is not recognized by Shotgun."
-                   % (node.name(), file_name))
-            self._app.log_error(msg)
-            return []
-            
-        fields = output_cache_template.get_fields(file_name)
-
-        # get the actual file paths based on the template. Ignore any sequence
-        # or eye fields
-        return self._app.tank.paths_from_template(
-            output_cache_template, fields, ["SEQ", "eye"])
-
+    def _check_alembic(self, node):
+        filepath = node.parm('filepath').evalAsString()
+    
+        if filepath.split('.')[-1] == 'abc':
+            node.parm('isalembic').set(1)
+        else:
+            node.parm('isalembic').set(0)
 
 ################################################################################
 # Utility methods
@@ -741,23 +422,12 @@ def _copy_parm_values(source_node, target_node, excludes=None):
                     # that's selected. To support both, we try the old way (which is how our
                     # otl is setup to work), and if that fails we then fall back on mapping
                     # the integer index from our otl's parm over to the string language name
-                    # that the geometry node is expecting.
+                    # that the file node is expecting.
                     if source_parm.name().startswith("lpre") or source_parm.name().startswith("lpost"):
                         value_map = ["hscript", "python"]
                         target_parm.set(value_map[source_parm.eval()])
                     else:
                         raise
-
-
-# return the menu label for the supplied parameter
-def _get_output_menu_label(parm):
-    if parm.menuItems()[parm.eval()] == "sgtk":
-        # evaluated sgtk path from item
-        return parm.menuLabels()[parm.eval()] 
-    else:
-        # output path from menu label
-        return parm.menuItems()[parm.eval()] 
-
 
 # move all the output connections from the source node to the target node
 def _move_outputs(source_node, target_node):
@@ -784,7 +454,7 @@ def _save_outputs_to_user_data(source_node, target_node):
         outputs.append(output_dict)
 
     # get the current encoder for the handler
-    handler_cls = TkGeometryNodeHandler
+    handler_cls = TkFileNodeHandler
     codecs = handler_cls.TK_OUTPUT_CONNECTION_CODECS
     encoder = codecs[handler_cls.TK_OUTPUT_CONNECTION_CODEC]['encode']
 
@@ -799,7 +469,7 @@ def _save_outputs_to_user_data(source_node, target_node):
 def _restore_outputs_from_user_data(source_node, target_node):
 
     data_str = source_node.userData(
-        TkGeometryNodeHandler.TK_OUTPUT_CONNECTIONS_KEY)
+        TkFileNodeHandler.TK_OUTPUT_CONNECTIONS_KEY)
 
     if not data_str:
         return
@@ -810,7 +480,7 @@ def _restore_outputs_from_user_data(source_node, target_node):
     data_str = data_str[sep_index + 1:]
 
     # get the matching decoder based on the codec name
-    handler_cls = TkGeometryNodeHandler
+    handler_cls = TkFileNodeHandler
     codecs = handler_cls.TK_OUTPUT_CONNECTION_CODECS
     decoder = codecs[codec_name]['decode']
 
