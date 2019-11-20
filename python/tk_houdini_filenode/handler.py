@@ -22,10 +22,14 @@ except:
 
 # houdini
 import hou
+import _alembic_hom_extensions as abc
+
+# import pyseq
+sys.path.append(r'\\server01\shared\sharedPython\modules\pyseq')
+import pyseq
 
 # toolkit
 import sgtk
-
 
 class TkFileNodeHandler(object):
     """Handle Tk file node operations and callbacks."""
@@ -78,18 +82,6 @@ class TkFileNodeHandler(object):
 
             # create a new, Toolkit file node:
             tk_file_node = file_node.parent().createNode(tk_node_type)
-
-            # find the index of the stored name on the new tk file node
-            # and set that item in the menu.
-            try:
-                output_profile_parm = tk_file_node.parm(
-                    TkFileNodeHandler.TK_OUTPUT_PROFILE_PARM)
-                output_profile_index = output_profile_parm.menuLabels().index(
-                    tk_output_profile_name)
-                output_profile_parm.set(output_profile_index)
-            except ValueError:
-                app.log_warning("No output profile found named: %s" % 
-                    (tk_output_profile_name,))
 
             # copy over all parameter values except the output path 
             _copy_parm_values(file_node, tk_file_node,
@@ -178,8 +170,6 @@ class TkFileNodeHandler(object):
             # can retrieve it later.
             output_profile_parm = tk_file_node.parm(
                 cls.TK_OUTPUT_PROFILE_PARM)
-            tk_output_profile_name = \
-                output_profile_parm.menuLabels()[output_profile_parm.eval()]
 
             # copy the inputs and move the outputs
             _copy_inputs(tk_file_node, file_node)
@@ -239,6 +229,7 @@ class TkFileNodeHandler(object):
         # logging methods, tank, context, etc.
         self._app = app
 
+
     ############################################################################
     # methods and callbacks executed via the OTLs
 
@@ -259,7 +250,7 @@ class TkFileNodeHandler(object):
 
         path = self._compute_output_path(node)
         self._check_alembic(node)
-
+        self.check_seq(node)
         return path
 
     # open a file browser showing the render path of the current node
@@ -321,6 +312,40 @@ class TkFileNodeHandler(object):
             # ingore any errors. ex: metrics logging not supported
             pass
 
+    def check_seq(self, node):
+        path = self._compute_output_path(node)
+
+        returnStr = None
+        if '$F4' in path:
+            path = path.replace('$F4', '*')
+            sequences = pyseq.get_sequences(path)
+
+            if sequences:
+                if len(sequences) == 1:
+                    seq = sequences[0]
+
+                    if seq:
+                        if seq.missing():
+                            returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%m'))
+                        else:
+                            returnStr = seq.format('%R')
+                    else:
+                        returnStr = 'Invalid Sequence Object!'
+                else:
+                    returnStr = 'No or multiple sequences detected!'
+        elif path.split('.')[-1] == 'abc':
+            abcRange = abc.alembicTimeRange(path)
+					
+            if abcRange:
+                returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
+            else:
+                returnStr = 'Single Abc'
+        else:
+            returnStr = 'Single Frame'
+
+        node.parm('seqlabel').set(returnStr)
+
+
 
     ############################################################################
     # Private methods
@@ -348,6 +373,7 @@ class TkFileNodeHandler(object):
             return_str = 'Mode not recognized!'
             
         node.parm('filepath').set(return_str)
+
         return return_str
 
     def _check_alembic(self, node):
