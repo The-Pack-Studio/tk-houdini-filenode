@@ -48,6 +48,23 @@ class TkFileNodeHandler(object):
     TK_FILE_NODE_TYPE = "sgtk_file"
     """The class of node as defined in Houdini for the file nodes."""
 
+    TK_OUTPUT_CONNECTIONS_KEY = "tk_output_connections"
+    """The key in the user data that stores the save output connections."""
+
+    TK_OUTPUT_CONNECTION_CODEC = "sgtk-01"
+    """The encode/decode scheme currently being used."""
+
+    TK_OUTPUT_CONNECTION_CODECS = {
+        "sgtk-01": {
+            'encode': lambda data: \
+                base64.b64encode(zlib.compress(pickle.dumps(data))),
+            'decode': lambda data_str: \
+                pickle.loads(zlib.decompress(base64.b64decode(data_str))),
+        },
+    }
+    """Encode/decode schemes. To support backward compatibility if changes."""
+    # codec names should not include a ":"
+
     ############################################################################
     # Class methods
 
@@ -298,7 +315,6 @@ class TkFileNodeHandler(object):
                 msg = "Failed to launch '%s'!" % (cmd,)
                 hou.ui.displayMessage(msg)
 
-
     # called when the node is created.
     def setup_node(self, node):
 
@@ -313,37 +329,58 @@ class TkFileNodeHandler(object):
             pass
 
     def check_seq(self, node):
-        path = self._compute_output_path(node)
+        path = node.parm('filepath').unexpandedString()
 
         returnStr = None
         if '$F4' in path:
             path = path.replace('$F4', '*')
             sequences = pyseq.get_sequences(path)
 
-            if sequences:
-                if len(sequences) == 1:
-                    seq = sequences[0]
+            if len(sequences) == 1:
+                seq = sequences[0]
 
-                    if seq:
-                        if seq.missing():
-                            returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%m'))
-                        else:
-                            returnStr = seq.format('%R')
+                if seq:
+                    if seq.missing():
+                        returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%m'))
                     else:
-                        returnStr = 'Invalid Sequence Object!'
+                        returnStr = seq.format('%R')
                 else:
-                    returnStr = 'No or multiple sequences detected!'
-        elif path.split('.')[-1] == 'abc':
-            abcRange = abc.alembicTimeRange(path)
-					
-            if abcRange:
-                returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
+                    returnStr = 'Invalid Sequence Object!'
             else:
-                returnStr = 'Single Abc'
+                returnStr = 'No or multiple sequences detected!'
+        elif path.split('.')[-1] == 'abc':
+            if os.path.exists(path):
+                abcRange = abc.alembicTimeRange(path)
+                        
+                if abcRange:
+                    returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
+                else:
+                    returnStr = 'Single Abc'
+            else:
+                returnStr = 'No Cache!'
         else:
-            returnStr = 'Single Frame'
+            if os.path.exists(path):
+                returnStr = 'Single Frame'
+            else:
+                returnStr = 'No Cache!'
 
         node.parm('seqlabel').set(returnStr)
+
+    def override_version(self, node):
+        if node.parm('overver').evalAsInt():
+            rop_node_path = node.parm('rop').evalAsString()
+
+            if rop_node_path:
+                path = node.parm('filepath').evalAsString()
+                
+                rop_node = hou.node(rop_node_path)
+                template = rop_node.hm().app().handler.get_output_template(rop_node)
+                
+                fields = template.get_fields(path)
+                node.parm('ver').set(fields['version'])
+                node.parm('ver').pressButton()
+        else:
+            self.refresh_path(node)
 
 
 
@@ -364,7 +401,18 @@ class TkFileNodeHandler(object):
                 rop_node = hou.node(rop_node_path)
                 
                 if rop_node and rop_node.type().name() == "sgtk_geometry":
-                    return_str = rop_node.parm("sopoutput").evalAsString()
+                    print 'Set Path!'
+                    if node.parm('overver').evalAsInt():
+                        template = rop_node.hm().app().handler.get_output_template(rop_node)
+                        path = rop_node.parm("sopoutput").evalAsString()
+
+                        fields = template.get_fields(path).copy()
+                        fields['version'] = node.parm('ver').evalAsInt()
+
+                        return_str = template.apply_fields(fields)
+                        return_str = return_str.replace(os.path.sep, "/")
+                    else:
+                        return_str = rop_node.parm("sopoutput").evalAsString()
                 else:
                     return_str = 'Invalid Out node!'
             else:
@@ -383,6 +431,7 @@ class TkFileNodeHandler(object):
             node.parm('isalembic').set(1)
         else:
             node.parm('isalembic').set(0)
+
 
 ################################################################################
 # Utility methods
@@ -462,7 +511,6 @@ def _move_outputs(source_node, target_node):
         output_node = connection.outputNode()
         output_node.setInput(connection.inputIndex(), target_node)
 
-
 # saves output connections into user data of target node. Needed when target
 # node doesn't have outputs.
 def _save_outputs_to_user_data(source_node, target_node):
@@ -489,7 +537,6 @@ def _save_outputs_to_user_data(source_node, target_node):
 
     # set the encoded data string on the input node
     target_node.setUserData(handler_cls.TK_OUTPUT_CONNECTIONS_KEY, data_str)
-
 
 # restore output connections from this node to the target node.
 def _restore_outputs_from_user_data(source_node, target_node):
