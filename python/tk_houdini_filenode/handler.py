@@ -379,7 +379,13 @@ class TkFileNodeHandler(object):
                 fields = template.get_fields(path)
                 node.parm('ver').set(fields['version'])
                 node.parm('ver').pressButton()
+
+                node.setComment('Version Overriden!')
+                node.setGenericFlag(hou.nodeFlag.DisplayComment, True)
         else:
+            node.setComment('')
+            node.setGenericFlag(hou.nodeFlag.DisplayComment, False)
+            
             self.refresh_path(node)
 
 
@@ -393,7 +399,7 @@ class TkFileNodeHandler(object):
     
         return_str = None
         if mode == 'file':
-            return_str = node.parm('file').evalAsString()
+            return_str = node.parm('file').unexpandedString()
         elif mode == 'out':
             rop_node_path = node.parm('rop').evalAsString()
             
