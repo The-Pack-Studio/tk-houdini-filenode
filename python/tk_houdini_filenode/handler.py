@@ -317,11 +317,6 @@ class TkFileNodeHandler(object):
 
     # called when the node is created.
     def setup_node(self, node):
-
-        default_name = self._app.get_setting('default_node_name')
-
-        node.setName(default_name, unique_name=True)
-
         try:
             self._app.log_metric("Create", log_version=True)
         except:
@@ -329,7 +324,9 @@ class TkFileNodeHandler(object):
             pass
 
     def check_seq(self, node):
-        path = node.parm('filepath').unexpandedString()
+        path = node.parm('filepath').evalAsString()
+        if node.parm('mode').evalAsString() == 'file':
+            path = node.parm('filepath').unexpandedString()
 
         returnStr = None
         if '$F4' in path:
@@ -407,7 +404,6 @@ class TkFileNodeHandler(object):
                 rop_node = hou.node(rop_node_path)
                 
                 if rop_node and rop_node.type().name() == "sgtk_geometry":
-                    print 'Set Path!'
                     if node.parm('overver').evalAsInt():
                         template = rop_node.hm().app().handler.get_output_template(rop_node)
                         path = rop_node.parm("sopoutput").evalAsString()
@@ -418,14 +414,18 @@ class TkFileNodeHandler(object):
                         return_str = template.apply_fields(fields)
                         return_str = return_str.replace(os.path.sep, "/")
                     else:
-                        return_str = rop_node.parm("sopoutput").evalAsString()
+                        # set expression
+                        expression = "chs('%s')" % rop_node.parm("sopoutput").path()
+                        node.parm('filepath').setExpression(expression, language=hou.exprLanguage.Hscript)
+                        return
                 else:
                     return_str = 'Invalid Out node!'
             else:
                 return_str = 'Missing Out path!'
         else:
             return_str = 'Mode not recognized!'
-            
+        
+        node.parm('filepath').deleteAllKeyframes()
         node.parm('filepath').set(return_str)
 
         return return_str

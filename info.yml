@@ -14,14 +14,6 @@
 # expected fields in the configuration file for this app
 configuration:
 
-    default_node_name:
-        type: str
-        description: >
-            A default name for File output nodes created in houdini.
-            Allowed characters include letters, numbers, periods, dashes, or
-            underscores.
-        default_value: sgtk_file
-
 
 # the Shotgun fields that this app needs in order to operate correctly
 requires_shotgun_fields:
