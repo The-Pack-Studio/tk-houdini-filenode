@@ -271,17 +271,11 @@ class TkFileNodeHandler(object):
         return path
 
     # open a file browser showing the render path of the current node
-    def show_in_fs(self):
-
-        # retrieve the calling node
-        current_node = hou.pwd()
-        if not current_node:
-            return
-
+    def show_in_fs(self, node):
         render_dir = None
 
         # first, try to just use the current cached path:
-        render_path = self._compute_output_path(current_node)
+        render_path = self._compute_output_path(node)
 
         if render_path:
             # the above method returns houdini style slashes, so ensure these
@@ -325,9 +319,9 @@ class TkFileNodeHandler(object):
 
     def check_seq(self, node):
         path = node.parm('filepath').evalAsString()
-        if node.parm('mode').evalAsString() == 'file':
+        if node.parm('mode').evalAsString() == 'file' or node.parm('overver').evalAsInt():
             path = node.parm('filepath').unexpandedString()
-
+       
         returnStr = None
         if '$F4' in path:
             path = path.replace('$F4', '*')
@@ -417,7 +411,7 @@ class TkFileNodeHandler(object):
                         # set expression
                         expression = "chs('%s')" % rop_node.parm("sopoutput").path()
                         node.parm('filepath').setExpression(expression, language=hou.exprLanguage.Hscript)
-                        return
+                        return node.parm('filepath').evalAsString()
                 else:
                     return_str = 'Invalid Out node!'
             else:
