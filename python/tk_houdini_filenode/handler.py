@@ -409,7 +409,6 @@ class TkFileNodeHandler(object):
                         return_str = return_str.replace(os.path.sep, "/")
                     else:
                         # set expression
-                        print 'Set expression on file node'
                         expression = "chs('%s')" % rop_node.parm("sopoutput").path()
                         node.parm('filepath').setExpression(expression, language=hou.exprLanguage.Hscript)
                         return node.parm('filepath').evalAsString()
