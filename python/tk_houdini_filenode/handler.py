@@ -25,7 +25,6 @@ import hou
 import _alembic_hom_extensions as abc
 
 # import pyseq
-sys.path.append(r'\\server01\shared\sharedPython\modules\pyseq')
 import pyseq
 
 # toolkit
@@ -408,7 +407,7 @@ class TkFileNodeHandler(object):
                         return_str = template.apply_fields(fields)
                         return_str = return_str.replace(os.path.sep, "/")
                     else:
-                        # set expression
+                        # set expression (enables path to change dynamically)
                         expression = "chs('%s')" % rop_node.parm("sopoutput").path()
                         node.parm('filepath').setExpression(expression, language=hou.exprLanguage.Hscript)
                         return node.parm('filepath').evalAsString()
@@ -419,6 +418,7 @@ class TkFileNodeHandler(object):
         else:
             return_str = 'Mode not recognized!'
         
+        #remove expression
         node.parm('filepath').deleteAllKeyframes()
         node.parm('filepath').set(return_str)
 
