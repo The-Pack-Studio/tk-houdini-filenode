@@ -228,7 +228,7 @@ class TkFileNodeHandler(object):
         """
 
         output_parm = node.parm(cls.NODE_OUTPUT_PATH_PARM)
-        path = hou.expandString(output_parm.evalAsString())
+        path = hou.text.expandString(output_parm.evalAsString())
         return path
 
     ############################################################################
@@ -265,7 +265,6 @@ class TkFileNodeHandler(object):
     def refresh_path(self, node):
 
         path = self._compute_output_path(node)
-        self._check_alembic(node)
         self.check_seq(node)
         return path
 
@@ -423,14 +422,6 @@ class TkFileNodeHandler(object):
         node.parm('filepath').set(return_str)
 
         return return_str
-
-    def _check_alembic(self, node):
-        filepath = node.parm('filepath').evalAsString()
-    
-        if filepath.split('.')[-1] == 'abc':
-            node.parm('isalembic').set(1)
-        else:
-            node.parm('isalembic').set(0)
 
 
 ################################################################################
