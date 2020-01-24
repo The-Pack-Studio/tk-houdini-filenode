@@ -253,10 +253,9 @@ class TkFileNodeHandler(object):
     def copy_path_to_clipboard(self):
 
         render_path = self._compute_output_path(hou.pwd())
+        render_path = render_path.replace('/', os.sep)
 
-        # use Qt to copy the path to the clipboard:
-        from sgtk.platform.qt import QtGui
-        QtGui.QApplication.clipboard().setText(render_path)
+        hou.ui.copyTextToClipboard(render_path)
 
         self._app.log_debug(
             "Copied render path to clipboard: %s" % (render_path,))
