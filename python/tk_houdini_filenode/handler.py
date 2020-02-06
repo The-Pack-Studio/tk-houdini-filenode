@@ -320,8 +320,10 @@ class TkFileNodeHandler(object):
             path = node.parm('filepath').unexpandedString()
        
         returnStr = None
-        if '$F4' in path:
+        if '$F' in path:
             path = path.replace('$F4', '*')
+            path = path.replace('$F', '*')
+
             sequences = pyseq.get_sequences(path)
 
             if len(sequences) == 1:
