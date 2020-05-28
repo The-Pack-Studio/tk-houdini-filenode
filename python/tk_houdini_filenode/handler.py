@@ -228,8 +228,10 @@ class TkFileNodeHandler(object):
         """
 
         output_parm = node.parm(cls.NODE_OUTPUT_PATH_PARM)
-        path = hou.text.expandString(output_parm.evalAsString())
-        return path
+        if hou.applicationVersion()[0] >= 18:
+            return hou.text.expandString(output_parm.evalAsString())
+        else:
+            return hou.expandString(output_parm.evalAsString())
 
     ############################################################################
     # Instance methods
