@@ -333,7 +333,7 @@ class TkFileNodeHandler(object):
 
                 if seq:
                     if seq.missing():
-                        returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%m'))
+                        returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%M'))
                     else:
                         returnStr = seq.format('%R')
                 else:
@@ -343,7 +343,7 @@ class TkFileNodeHandler(object):
         elif path.split('.')[-1] == 'abc':
             if os.path.exists(path):
                 abcRange = abc.alembicTimeRange(path)
-                        
+                
                 if abcRange:
                     returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
                 else:
@@ -355,8 +355,17 @@ class TkFileNodeHandler(object):
                 returnStr = 'Single Frame'
             else:
                 returnStr = 'No Cache!'
-
+        
         node.parm('seqlabel').set(returnStr)
+
+        # sync with rop node
+        mode = node.parm('mode').evalAsString()
+        if mode == 'out':
+            rop_node_path = node.parm('rop').evalAsString()
+            rop_node = hou.node(rop_node_path)
+
+            if rop_node and rop_node.type().name() == 'sgtk_geometry':
+                rop_node.parm('seqlabel').set(returnStr)
 
     def override_version(self, node):
         if node.parm('overver').evalAsInt():
