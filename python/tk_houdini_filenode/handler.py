@@ -359,8 +359,7 @@ class TkFileNodeHandler(object):
         node.parm('seqlabel').set(returnStr)
 
         # sync with rop node
-        mode = node.parm('mode').evalAsString()
-        if mode == 'out':
+        if node.parm('mode').evalAsString() == 'out' and node.parm('overver').evalAsInt() != 1:
             rop_node_path = node.parm('rop').evalAsString()
             rop_node = hou.node(rop_node_path)
 
