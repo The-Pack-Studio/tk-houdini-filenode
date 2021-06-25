@@ -317,54 +317,56 @@ class TkFileNodeHandler(object):
             pass
 
     def check_seq(self, node):
-        path = node.parm('filepath').evalAsString()
-        if node.parm('mode').evalAsString() == 'file' or node.parm('overver').evalAsInt():
-            path = node.parm('filepath').unexpandedString()
-       
-        returnStr = None
-        if '$F' in path:
-            path = path.replace('$F4', '*')
-            path = path.replace('$F', '*')
-
-            sequences = pyseq.get_sequences(path)
-
-            if len(sequences) == 1:
-                seq = sequences[0]
-
-                if seq:
-                    if seq.missing():
-                        returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%M'))
-                    else:
-                        returnStr = seq.format('%R')
-                else:
-                    returnStr = 'Invalid Sequence Object!'
-            else:
-                returnStr = 'No or multiple sequences detected!'
-        elif path.split('.')[-1] == 'abc':
-            if os.path.exists(path):
-                abcRange = abc.alembicTimeRange(path)
-                
-                if abcRange:
-                    returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
-                else:
-                    returnStr = 'Single Abc'
-            else:
-                returnStr = 'No Cache!'
-        else:
-            if os.path.exists(path):
-                returnStr = 'Single Frame'
-            else:
-                returnStr = 'No Cache!'
-        
-        node.parm('seqlabel').set(returnStr)
-
         # sync with rop node
         if node.parm('mode').evalAsString() == 'out' and node.parm('overver').evalAsInt() != 1:
             rop_node_path = node.parm('rop').evalAsString()
             rop_node = hou.node(rop_node_path)
 
             if rop_node and rop_node.type().name() == 'sgtk_geometry':
-                rop_node.parm('seqlabel').set(returnStr)
+                rop_node.hm().app().handler.check_seq(rop_node)
+            else:
+                node.parm('seqlabel').set('Invalid Out node!')
+        else:
+            path = node.parm('filepath').evalAsString()
+            if node.parm('mode').evalAsString() == 'file' or node.parm('overver').evalAsInt():
+                path = node.parm('filepath').unexpandedString()
+        
+            returnStr = None
+            if '$F' in path:
+                path = path.replace('$F4', '*')
+                path = path.replace('$F', '*')
+
+                sequences = pyseq.get_sequences(path)
+
+                if len(sequences) == 1:
+                    seq = sequences[0]
+
+                    if seq:
+                        if seq.missing():
+                            returnStr = '[%s-%s], missing %s' % (seq.format('%s'), seq.format('%e'), seq.format('%M'))
+                        else:
+                            returnStr = seq.format('%R')
+                    else:
+                        returnStr = 'Invalid Sequence Object!'
+                else:
+                    returnStr = 'No or multiple sequences detected!'
+            elif path.split('.')[-1] == 'abc':
+                if os.path.exists(path):
+                    abcRange = abc.alembicTimeRange(path)
+                    
+                    if abcRange:
+                        returnStr = '[%s-%s] - ABC Archive' % (int(abcRange[0] * hou.fps()), int(abcRange[1] * hou.fps()))
+                    else:
+                        returnStr = 'Single Abc'
+                else:
+                    returnStr = 'No Cache!'
+            else:
+                if os.path.exists(path):
+                    returnStr = 'Single Frame'
+                else:
+                    returnStr = 'No Cache!'
+            
+            node.parm('seqlabel').set(returnStr)
 
     def override_version(self, node):
         if node.parm('overver').evalAsInt():
